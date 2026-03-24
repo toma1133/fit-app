@@ -20,6 +20,7 @@ import './App.css';
 
 export default function App() {
 	const { setTheme } = useStore();
+	const basename = import.meta.env.PROD ? '/travel-app' : undefined;
 
 	useAuthListener();
 
@@ -37,7 +38,7 @@ export default function App() {
 	}, [setTheme]);
 
 	return (
-		<BrowserRouter>
+		<BrowserRouter basename={basename}>
 			<Routes>
 				<Route element={<LoginLayout />}>
 					<Route
