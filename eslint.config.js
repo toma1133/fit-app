@@ -17,6 +17,7 @@ export default defineConfig([
 			reactRefresh.configs.vite,
 			eslintPluginPrettierRecommended,
 		],
+		parser: '@typescript-eslint/parser',
 		languageOptions: {
 			ecmaVersion: 2020,
 			globals: globals.browser,
@@ -28,6 +29,11 @@ export default defineConfig([
 					endOfLine: 'auto',
 				},
 			],
+		},
+		settings: {
+			'import/parsers': {
+				'@typescript-eslint/parser': ['.ts'],
+			},
 		},
 	},
 ]);
