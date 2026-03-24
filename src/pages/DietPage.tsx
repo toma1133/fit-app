@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Utensils, Check, ClipboardList, BookOpen, Trash2, X, ListPlus } from 'lucide-react';
+import { Utensils, Check, ClipboardList, BookOpen, Trash2, X, ListPlus, Edit2 } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { useFirestore } from '../hooks/useFirestore';
 import { getThemeStyles } from '../utils/theme';
@@ -31,15 +31,20 @@ export const DietPage: React.FC = () => {
 	const [modals, setModals] = useState({ dietRecord: false, dietPlan: false, recipeBuilder: false, foodLib: false });
 	const toggleModal = (k: string, v: boolean) => setModals((p) => ({ ...p, [k]: v }));
 
+	// --- 飲食紀錄狀態 ---
 	const [recordType, setRecordType] = useState('');
 	const [recordId, setRecordId] = useState('');
 	const [recordServings, setRecordServings] = useState<number | string>(1);
 	const [manualMeal, setManualMeal] = useState({ name: '', calories: '', protein: '', carbs: '', fat: '' });
 	const [deductInventory, setDeductInventory] = useState(false);
 
+	// --- 食譜管理狀態 ---
+	const [editingRecipeId, setEditingRecipeId] = useState<string | null>(null);
 	const [recipeName, setRecipeName] = useState('');
 	const [recipeItems, setRecipeItems] = useState<RecipeItem[]>([]);
 
+	// --- 食材庫管理狀態 ---
+	const [editingFoodId, setEditingFoodId] = useState<string | null>(null);
 	const [libName, setLibName] = useState('');
 	const [libCals, setLibCals] = useState('');
 	const [libProtein, setLibProtein] = useState('');
@@ -76,7 +81,7 @@ export const DietPage: React.FC = () => {
 		}
 	};
 
-	const handleRecordMeal = async (e: React.FormEvent, isPlan = false) => {
+	const handleRecordMeal = async (e: React.SubmitEvent, isPlan = false) => {
 		e.preventDefault();
 		let payload = null;
 		let inventoryDeductions: { name: string; qty: number }[] = [];
@@ -136,17 +141,22 @@ export const DietPage: React.FC = () => {
 		}
 	};
 
-	const handleAddToLibrary = async (e: React.FormEvent) => {
-		e.preventDefault();
-		if (!libName || !libCals) return;
-		await addFood(generateId(), {
-			name: libName,
-			calories: parseFloat(libCals),
-			protein: libProtein ? parseFloat(libProtein) : 0,
-			carbs: libCarbs ? parseFloat(libCarbs) : 0,
-			fat: libFat ? parseFloat(libFat) : 0,
+	const handleEatPlan = async (plan: MealPlanData) => {
+		await addMeal(generateId(), {
+			date: viewDate,
+			name: plan.name,
+			calories: plan.calories,
+			protein: plan.protein || 0,
+			carbs: plan.carbs || 0,
+			fat: plan.fat || 0,
 			timestamp: Date.now(),
 		});
+		await addPlan(plan.id, { ...plan, isEaten: true });
+	};
+
+	// --- 食材庫管理方法 ---
+	const resetFoodForm = () => {
+		setEditingFoodId(null);
 		setLibName('');
 		setLibCals('');
 		setLibProtein('');
@@ -154,7 +164,38 @@ export const DietPage: React.FC = () => {
 		setLibFat('');
 	};
 
-	const handleSaveRecipe = async (e: React.FormEvent) => {
+	const handleAddOrUpdateFood = async (e: React.SubmitEvent) => {
+		e.preventDefault();
+		if (!libName || !libCals) return;
+		const id = editingFoodId || generateId();
+		await addFood(id, {
+			name: libName,
+			calories: parseFloat(libCals),
+			protein: libProtein ? parseFloat(libProtein) : 0,
+			carbs: libCarbs ? parseFloat(libCarbs) : 0,
+			fat: libFat ? parseFloat(libFat) : 0,
+			timestamp: Date.now(),
+		});
+		resetFoodForm();
+	};
+
+	const handleEditFood = (food: FoodData) => {
+		setEditingFoodId(food.id);
+		setLibName(food.name);
+		setLibCals(food.calories.toString());
+		setLibProtein(food.protein ? food.protein.toString() : '');
+		setLibCarbs(food.carbs ? food.carbs.toString() : '');
+		setLibFat(food.fat ? food.fat.toString() : '');
+	};
+
+	// --- 食譜庫管理方法 ---
+	const resetRecipeForm = () => {
+		setEditingRecipeId(null);
+		setRecipeName('');
+		setRecipeItems([]);
+	};
+
+	const handleAddOrUpdateRecipe = async (e: React.SubmitEvent) => {
 		e.preventDefault();
 		if (recipeItems.length === 0 || !recipeName) return;
 
@@ -168,7 +209,8 @@ export const DietPage: React.FC = () => {
 			{ calories: 0, protein: 0, carbs: 0, fat: 0 },
 		);
 
-		await addRecipe(generateId(), {
+		const id = editingRecipeId || generateId();
+		await addRecipe(id, {
 			name: recipeName.trim(),
 			items: recipeItems.map((i) => ({ name: i.name, qty: i.qty, foodId: i.foodId })),
 			calories: Math.round(summary.calories),
@@ -177,21 +219,28 @@ export const DietPage: React.FC = () => {
 			fat: Math.round(summary.fat * 10) / 10,
 			timestamp: Date.now(),
 		});
-		setRecipeItems([]);
-		setRecipeName('');
+		resetRecipeForm();
 	};
 
-	const handleEatPlan = async (plan: MealPlanData) => {
-		await addMeal(generateId(), {
-			date: viewDate,
-			name: plan.name,
-			calories: plan.calories,
-			protein: plan.protein || 0,
-			carbs: plan.carbs || 0,
-			fat: plan.fat || 0,
-			timestamp: Date.now(),
+	const handleEditRecipe = (recipe: RecipeData) => {
+		setEditingRecipeId(recipe.id);
+		setRecipeName(recipe.name);
+
+		// 將關聯的食材重新拉取計算
+		const reconstructedItems = recipe.items.map((item) => {
+			const foodItem = foodLibrary.find((f) => f.id === item.foodId);
+			return {
+				localId: generateId(),
+				foodId: item.foodId,
+				name: item.name,
+				qty: item.qty,
+				calories: foodItem ? foodItem.calories : 0,
+				protein: foodItem ? foodItem.protein : 0,
+				carbs: foodItem ? foodItem.carbs : 0,
+				fat: foodItem ? foodItem.fat : 0,
+			};
 		});
-		await addPlan(plan.id, { ...plan, isEaten: true });
+		setRecipeItems(reconstructedItems);
 	};
 
 	const MacroCard: React.FC<MacroCardProps> = ({ label, value, unit, isHighlight }) => (
@@ -274,7 +323,7 @@ export const DietPage: React.FC = () => {
 							<Check size={16} className={`mr-2 ${theme.accentEmerald}`} /> 實際攝取明細
 						</h2>
 					</div>
-					<div className="p-4 space-y-2 flex-1">
+					<div className="p-4 flex flex-col gap-2 flex-1">
 						{viewDateMeals.length > 0 ? (
 							viewDateMeals.map((meal) => (
 								<div
@@ -320,7 +369,7 @@ export const DietPage: React.FC = () => {
 							<ClipboardList size={16} className={`mr-2 ${theme.textMuted}`} /> 預排計畫
 						</h2>
 					</div>
-					<div className="p-4 space-y-2 flex-1">
+					<div className="p-4 flex flex-col gap-2 flex-1">
 						{viewDateMealPlans.length > 0 ? (
 							viewDateMealPlans.map((plan) => (
 								<div
@@ -453,7 +502,7 @@ export const DietPage: React.FC = () => {
 					)}
 
 					{recordType === 'manual' && (
-						<div className="space-y-4 border-t border-slate-200 dark:border-slate-800 pt-4">
+						<div className="flex flex-col gap-4 border-t border-slate-200 dark:border-slate-800 pt-4">
 							<div>
 								<label className={`block text-[11px] font-semibold uppercase tracking-wider ${theme.textLabel} mb-1.5`}>
 									餐點名稱
@@ -553,7 +602,7 @@ export const DietPage: React.FC = () => {
 						</select>
 					</div>
 					{recordType === 'manual' && (
-						<div className="space-y-4 pt-4">
+						<div className="flex flex-col gap-4 pt-4">
 							<div>
 								<label className={`block text-[11px] font-semibold uppercase tracking-wider ${theme.textLabel} mb-1.5`}>
 									餐點名稱
@@ -597,10 +646,10 @@ export const DietPage: React.FC = () => {
 				<div className="flex flex-col gap-4 h-full max-h-[70vh]">
 					<div>
 						<label className={`block text-[11px] font-semibold uppercase tracking-wider ${theme.textLabel} mb-1.5`}>
-							選擇食材加入新食譜
+							選擇食材加入{editingRecipeId ? '食譜' : '新食譜'}
 						</label>
 						<select
-							title="selectRecord"
+							title="selectFood"
 							onChange={(e) => {
 								const food = foodLibrary.find((f) => f.id === e.target.value);
 								if (food) {
@@ -631,7 +680,7 @@ export const DietPage: React.FC = () => {
 						</select>
 					</div>
 
-					<div className="flex-1 overflow-y-auto gap-2 custom-scrollbar min-h-[120px] p-2 border rounded-lg bg-slate-50 dark:bg-slate-900/50 border-slate-200 dark:border-slate-800">
+					<div className="flex-1 overflow-y-auto flex flex-col gap-2 custom-scrollbar min-h-[120px] p-2 border rounded-lg bg-slate-50 dark:bg-slate-900/50 border-slate-200 dark:border-slate-800">
 						{recipeItems.map((item, idx) => (
 							<div
 								key={item.localId}
@@ -643,7 +692,7 @@ export const DietPage: React.FC = () => {
 								<div className="flex items-center gap-2 shrink-0">
 									<input
 										type="number"
-										title="foodNum"
+										title="itemQty"
 										step="0.1"
 										value={item.qty}
 										onChange={(e) => {
@@ -657,7 +706,7 @@ export const DietPage: React.FC = () => {
 									/>
 									<button
 										type="button"
-										title="setRecipe"
+										title="close"
 										onClick={() => setRecipeItems(recipeItems.filter((i) => i.localId !== item.localId))}
 										className="text-slate-400 hover:text-red-500 p-1"
 									>
@@ -669,9 +718,19 @@ export const DietPage: React.FC = () => {
 					</div>
 
 					<form
-						onSubmit={handleSaveRecipe}
+						onSubmit={handleAddOrUpdateRecipe}
 						className="flex flex-col gap-3 pb-4 border-b border-slate-200 dark:border-slate-800"
 					>
+						<div className="flex items-center justify-between mb-1.5">
+							<label className={`block text-[11px] font-semibold uppercase tracking-wider ${theme.textLabel}`}>
+								食譜名稱
+							</label>
+							{editingRecipeId && (
+								<button type="button" onClick={resetRecipeForm} className="text-[11px] text-blue-500 hover:underline">
+									取消編輯
+								</button>
+							)}
+						</div>
 						<div>
 							<input
 								type="text"
@@ -685,9 +744,9 @@ export const DietPage: React.FC = () => {
 						<button
 							type="submit"
 							disabled={recipeItems.length === 0}
-							className={`w-full p-2.5 rounded-lg text-sm font-medium ${theme.primaryBtn} disabled:opacity-50`}
+							className={`w-full p-2.5 rounded-lg text-sm font-medium ${editingRecipeId ? 'bg-amber-600 hover:bg-amber-700 text-white shadow-sm' : theme.primaryBtn} disabled:opacity-50`}
 						>
-							儲存新食譜
+							{editingRecipeId ? '儲存食譜修改' : '儲存新食譜'}
 						</button>
 					</form>
 
@@ -697,19 +756,35 @@ export const DietPage: React.FC = () => {
 						</h4>
 						<div className="max-h-40 overflow-y-auto flex flex-col gap-2 custom-scrollbar pr-1">
 							{recipes.map((r) => (
-								<div key={r.id} className={`flex justify-between items-center p-3 rounded-lg border ${theme.listItem}`}>
+								<div
+									key={r.id}
+									className={`flex justify-between items-center p-3 rounded-lg border transition-all ${theme.listItem} ${editingRecipeId === r.id ? 'border-blue-500 ring-1 ring-blue-500 dark:bg-slate-800' : ''}`}
+								>
 									<div className="flex-1 min-w-0">
 										<div className={`font-medium text-sm truncate ${theme.accentBlue}`}>{r.name}</div>
 										<div className={`text-[11px] font-mono ${theme.textMuted} mt-0.5`}>{r.calories} kcal</div>
 									</div>
-									<button
-										type="button"
-										title="removeRecipe"
-										onClick={() => removeRecipe(r.id)}
-										className={`text-slate-400 hover:text-red-500 p-1.5 rounded-md hover:bg-red-50 dark:hover:bg-red-900/20`}
-									>
-										<Trash2 size={16} />
-									</button>
+									<div className="flex gap-1">
+										<button
+											type="button"
+											title="editRecipe"
+											onClick={() => handleEditRecipe(r)}
+											className={`text-slate-400 hover:text-blue-500 p-1.5 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors`}
+										>
+											<Edit2 size={16} />
+										</button>
+										<button
+											type="button"
+											title="removeRecipe"
+											onClick={() => {
+												removeRecipe(r.id);
+												if (editingRecipeId === r.id) resetRecipeForm();
+											}}
+											className={`text-slate-400 hover:text-red-500 p-1.5 rounded-md hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors`}
+										>
+											<Trash2 size={16} />
+										</button>
+									</div>
 								</div>
 							))}
 						</div>
@@ -719,14 +794,21 @@ export const DietPage: React.FC = () => {
 
 			<Modal isOpen={modals.foodLib} onClose={() => toggleModal('foodLib', false)} title="管理基本食材" icon={BookOpen}>
 				<div className="mb-6 border-b pb-6 dark:border-slate-800">
-					<form onSubmit={handleAddToLibrary} className="flex flex-col gap-3">
-						<div>
-							<label className={`block text-[11px] font-semibold uppercase tracking-wider ${theme.textLabel} mb-1.5`}>
-								食材名稱
+					<form onSubmit={handleAddOrUpdateFood} className="flex flex-col gap-3">
+						<div className="flex items-center justify-between mb-1.5">
+							<label className={`block text-[11px] font-semibold uppercase tracking-wider ${theme.textLabel}`}>
+								{editingFoodId ? '修改食材' : '新增食材'}
 							</label>
+							{editingFoodId && (
+								<button type="button" onClick={resetFoodForm} className="text-[11px] text-blue-500 hover:underline">
+									取消編輯
+								</button>
+							)}
+						</div>
+						<div>
 							<input
 								type="text"
-								placeholder="例: 雞胸肉 100g"
+								placeholder="例: 雞胸肉 100g (必填)"
 								value={libName}
 								onChange={(e) => setLibName(e.target.value)}
 								className={`w-full p-2.5 border rounded-lg outline-none text-sm ${theme.input}`}
@@ -734,20 +816,49 @@ export const DietPage: React.FC = () => {
 							/>
 						</div>
 						<div>
-							<label className={`block text-[11px] font-semibold uppercase tracking-wider ${theme.textLabel} mb-1.5`}>
-								熱量 (kcal)
-							</label>
 							<input
 								type="number"
-								placeholder="必填"
+								placeholder="熱量 kcal (必填)"
 								value={libCals}
 								onChange={(e) => setLibCals(e.target.value)}
 								className={`w-full p-2.5 border rounded-lg outline-none text-sm ${theme.input}`}
 								required
 							/>
 						</div>
-						<button type="submit" className={`w-full p-2.5 rounded-lg text-sm font-medium ${theme.primaryBtn}`}>
-							新增食材
+						<div className="grid grid-cols-3 gap-3">
+							<div>
+								<input
+									type="number"
+									placeholder="蛋白(g)"
+									value={libProtein}
+									onChange={(e) => setLibProtein(e.target.value)}
+									className={`w-full p-2.5 border rounded-lg outline-none text-sm ${theme.input}`}
+								/>
+							</div>
+							<div>
+								<input
+									type="number"
+									placeholder="碳水(g)"
+									value={libCarbs}
+									onChange={(e) => setLibCarbs(e.target.value)}
+									className={`w-full p-2.5 border rounded-lg outline-none text-sm ${theme.input}`}
+								/>
+							</div>
+							<div>
+								<input
+									type="number"
+									placeholder="脂肪(g)"
+									value={libFat}
+									onChange={(e) => setLibFat(e.target.value)}
+									className={`w-full p-2.5 border rounded-lg outline-none text-sm ${theme.input}`}
+								/>
+							</div>
+						</div>
+						<button
+							type="submit"
+							className={`w-full p-2.5 rounded-lg text-sm font-medium ${editingFoodId ? 'bg-amber-600 hover:bg-amber-700 text-white shadow-sm' : theme.primaryBtn}`}
+						>
+							{editingFoodId ? '儲存修改' : '新增食材'}
 						</button>
 					</form>
 				</div>
@@ -755,19 +866,35 @@ export const DietPage: React.FC = () => {
 					<h4 className={`text-[11px] uppercase tracking-wider font-semibold ${theme.textLabel} mb-3`}>現有食材清單</h4>
 					<div className="max-h-48 overflow-y-auto flex flex-col gap-2 custom-scrollbar pr-1">
 						{foodLibrary.map((f) => (
-							<div key={f.id} className={`flex justify-between items-center p-3 rounded-lg border ${theme.listItem}`}>
+							<div
+								key={f.id}
+								className={`flex justify-between items-center p-3 rounded-lg border transition-all ${theme.listItem} ${editingFoodId === f.id ? 'border-blue-500 ring-1 ring-blue-500 dark:bg-slate-800' : ''}`}
+							>
 								<div className="flex-1 min-w-0">
 									<div className={`font-medium text-sm truncate ${theme.textMain}`}>{f.name}</div>
 									<div className={`text-[11px] font-mono ${theme.textMuted} mt-0.5`}>{f.calories} kcal</div>
 								</div>
-								<button
-									type="button"
-									title="removeFood"
-									onClick={() => removeFood(f.id)}
-									className={`text-slate-400 hover:text-red-500 p-1.5 rounded-md hover:bg-red-50 dark:hover:bg-red-900/20`}
-								>
-									<Trash2 size={16} />
-								</button>
+								<div className="flex gap-1">
+									<button
+										type="button"
+										title="handleEditFood"
+										onClick={() => handleEditFood(f)}
+										className={`text-slate-400 hover:text-blue-500 p-1.5 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors`}
+									>
+										<Edit2 size={16} />
+									</button>
+									<button
+										type="button"
+										title="removeFood"
+										onClick={() => {
+											removeFood(f.id);
+											if (editingFoodId === f.id) resetFoodForm();
+										}}
+										className={`text-slate-400 hover:text-red-500 p-1.5 rounded-md hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors`}
+									>
+										<Trash2 size={16} />
+									</button>
+								</div>
 							</div>
 						))}
 					</div>

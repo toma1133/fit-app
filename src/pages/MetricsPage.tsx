@@ -141,7 +141,7 @@ export const MetricsPage: React.FC = () => {
 						<Activity size={16} className={`mr-2 ${theme.textMuted}`} /> 歷史記錄明細
 					</h2>
 				</div>
-				<div className="p-4 space-y-2">
+				<div className="p-4 flex flex-col gap-2">
 					{metrics
 						.slice()
 						.reverse()

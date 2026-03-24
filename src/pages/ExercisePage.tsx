@@ -165,7 +165,7 @@ export const ExercisePage: React.FC = () => {
 						<Dumbbell size={16} className={`mr-2 ${theme.textMuted}`} /> 運動日誌明細
 					</h2>
 				</div>
-				<div className="p-4 space-y-2">
+				<div className="p-4 flex flex-col gap-2">
 					{viewDateExercises.map((ex) => (
 						<div
 							key={ex.id}
@@ -246,7 +246,7 @@ export const ExercisePage: React.FC = () => {
 				title="管理活動項目"
 				icon={Settings}
 			>
-				<div className="space-y-6">
+				<div className="flex flex-col gap-6">
 					<form onSubmit={handleAddOrUpdateCustomExercise} className="flex gap-2">
 						<input
 							type="text"
@@ -274,7 +274,7 @@ export const ExercisePage: React.FC = () => {
 					</form>
 
 					<div>
-						<div className="max-h-60 overflow-y-auto space-y-2 custom-scrollbar pr-1">
+						<div className="max-h-60 overflow-y-auto flex flex-col gap-2 custom-scrollbar pr-1">
 							{customExercises.map((ex) => (
 								<div
 									key={ex.id}

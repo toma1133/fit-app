@@ -210,7 +210,7 @@ export const InventoryPage: React.FC = () => {
 								<History size={16} className={`mr-2 ${theme.textMuted}`} /> 庫存異動紀錄
 							</h2>
 						</div>
-						<div className="flex-1 overflow-y-auto p-4 space-y-2 custom-scrollbar">
+						<div className="flex-1 overflow-y-auto p-4 flex flex-col gap-2 custom-scrollbar">
 							{sortedLogs.slice(0, 20).map((log) => (
 								<div
 									key={log.id}
