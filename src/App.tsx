@@ -20,7 +20,7 @@ import './App.css';
 
 export default function App() {
 	const { setTheme } = useStore();
-	const basename = import.meta.env.PROD ? '/travel-app' : undefined;
+	const basename = import.meta.env.PROD ? '/fit-app' : undefined;
 
 	useAuthListener();
 
