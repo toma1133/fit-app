@@ -197,7 +197,7 @@ export const MetricsPage: React.FC = () => {
 							title="date"
 							value={metricDate}
 							onChange={(e) => setMetricDate(e.target.value)}
-							className={`w-full p-2.5 border rounded-lg outline-none text-sm ${theme.input}`}
+							className={`w-full block appearance-none min-h-[42px] p-2.5 border rounded-lg outline-none text-sm ${theme.input}`}
 							required
 						/>
 					</div>
